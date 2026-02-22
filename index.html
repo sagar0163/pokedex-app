@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokedex - Pokemon Database</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        poke: {
+                            yellow: '#ffcb05',
+                            blue: '#3b4cca',
+                            red: '#cc0000'
+                        },
+                        dark: '#0f0f0f',
+                        surface: '#1a1a1a',
+                        card: '#252525'
+                    },
+                    fontFamily: { sans: ['Poppins', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background: #0f0f0f; color: white; font-family: 'Poppins', sans-serif; }
+        .type-normal { background: #A8A77A; }
+        .type-fire { background: #EE8130; }
+        .type-water { background: #6390F0; }
+        .type-electric { background: #F7D02C; }
+        .type-grass { background: #7AC74C; }
+        .type-ice { background: #96D9D6; }
+        .type-fighting { background: #C22E28; }
+        .type-poison { background: #A33EA1; }
+        .type-ground { background: #E2BF65; }
+        .type-flying { background: #A98FF3; }
+        .type-psychic { background: #F95587; }
+        .type-bug { background: #A6B91A; }
+        .type-rock { background: #B6A136; }
+        .type-ghost { background: #735797; }
+        .type-dragon { background: #6F35FC; }
+        .type-dark { background: #705746; }
+        .type-steel { background: #B7B7CE; }
+        .type-fairy { background: #D685AD; }
+        
+        .poke-card { transition: all 0.2s ease; }
+        .poke-card:hover { transform: translateY(-8px); box-shadow: 0 10px 40px rgba(0,0,0,0.4); }
+        
+        .stat-bar { height: 8px; border-radius: 4px; background: #333; overflow: hidden; }
+        .stat-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        
+        .loading-pokeball { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        
+        .modal-enter-active, .modal-leave-active { transition: all 0.3s ease; }
+        .modal-enter-from, .modal-leave-to { opacity: 0; transform: scale(0.9); }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #444; }
+        
+        .pokemon-sprite { image-rendering: pixelated; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div id="app">
+        <!-- Header -->
+        <header class="sticky top-0 z-40 bg-dark/95 backdrop-blur border-b border-white/10">
+            <div class="max-w-7xl mx-auto px-4 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-full bg-poke-yellow flex items-center justify-center">
+                            <div class="w-8 h-8 rounded-full bg-dark border-4 border-white"></div>
+                        </div>
+                        <h1 class="text-2xl font-bold">
+                            <span class="text-poke-yellow">Poke</span><span class="text-poke-blue">dex</span>
+                        </h1>
+                    </div>
+                    
+                    <div class="flex items-center gap-4">
+                        <!-- Search -->
+                        <div class="relative">
+                            <input v-model="search" @input="searchPokemon" type="text" placeholder="Search Pokemon..." 
+                                class="w-64 bg-surface border border-white/10 rounded-full px-5 py-2 pl-12 focus:border-poke-yellow focus:outline-none">
+                            <svg class="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                        </div>
+                        
+                        <!-- Favorites Toggle -->
+                        <button @click="showFavorites = !showFavorites" :class="showFavorites ? 'bg-poke-yellow text-dark' : 'bg-surface'" 
+                            class="px-4 py-2 rounded-full font-medium transition">
+                            ❤️ {{ favorites.length }}
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Type Filters -->
+                <div class="flex flex-wrap gap-2 mt-4">
+                    <button @click="filterType = null" :class="!filterType ? 'bg-white text-dark' : 'bg-surface'" 
+                        class="px-3 py-1 rounded-full text-sm font-medium transition">All</button>
+                    <button v-for="type in types" :key="type" @click="filterType = type" 
+                        :class="filterType === type ? `type-${type} text-white` : 'bg-surface'"
+                        class="px-3 py-1 rounded-full text-sm font-medium capitalize transition">
+                        {{ type }}
+                    </button>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 py-8">
+            <!-- Loading -->
+            <div v-if="loading" class="flex flex-col items-center justify-center py-20">
+                <div class="w-16 h-16 loading-pokeball">
+                    <div class="w-full h-1/2 bg-poke-red rounded-t-full"></div>
+                    <div class="w-full h-1/2 bg-white rounded-b-full relative">
+                        <div class="absolute -top-3 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-dark border-2 border-white"></div>
+                    </div>
+                </div>
+                <p class="mt-4 text-gray-400">Loading Pokemon...</p>
+            </div>
+            
+            <!-- Pokemon Grid -->
+            <div v-else class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                <div v-for="pokemon in filteredPokemon" :key="pokemon.id" @click="openModal(pokemon)"
+                    class="poke-card bg-card rounded-2xl p-4 cursor-pointer relative overflow-hidden group">
+                    <!-- Favorite Button -->
+                    <button @click.stop="toggleFavorite(pokemon)" class="absolute top-2 right-2 z-10 text-2xl">
+                        {{ isFavorite(pokemon.id) ? '❤️' : '🤍' }}
+                    </button>
+                    
+                    <!-- Background Number -->
+                    <div class="absolute -bottom-4 -right-4 text-8xl font-bold text-white/5">{{ pokemon.id }}</div>
+                    
+                    <!-- Image -->
+                    <div class="flex justify-center mb-4">
+                        <img :src="pokemon.sprite" :alt="pokemon.name" 
+                            class="w-32 h-32 pokemon-sprite drop-shadow-lg">
+                    </div>
+                    
+                    <!-- Info -->
+                    <div>
+                        <p class="text-gray-400 text-sm">#{{ String(pokemon.id).padStart(3, '0') }}</p>
+                        <h3 class="text-xl font-bold capitalize mb-2">{{ pokemon.name }}</h3>
+                        <div class="flex gap-2">
+                            <span v-for="t in pokemon.types" :key="t" :class="`type-${t} px-3 py-1 rounded-full text-xs font-medium text-white capitalize`">
+                                {{ t }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Load More -->
+            <div v-if="!showFavorites && hasMore" class="text-center mt-12">
+                <button @click="loadMore" :disabled="loadingMore" 
+                    class="bg-poke-yellow hover:bg-yellow-400 text-dark font-bold py-3 px-8 rounded-full transition">
+                    {{ loadingMore ? 'Loading...' : 'Load More' }}
+                </button>
+            </div>
+            
+            <!-- No Results -->
+            <div v-if="filteredPokemon.length === 0 && !loading" class="text-center py-20">
+                <p class="text-2xl mb-2">😕</p>
+                <p class="text-gray-400">No Pokemon found</p>
+            </div>
+        </main>
+        
+        <!-- Pokemon Modal -->
+        <div v-if="selectedPokemon" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-black/80" @click="closeModal"></div>
+            
+            <div class="relative bg-card rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+                <!-- Header -->
+                <div class="relative" :class="`type-${selectedPokemon.types[0]}`">
+                    <button @click="closeModal" class="absolute top-4 right-4 w-10 h-10 bg-black/30 rounded-full flex items-center justify-center text-white hover:bg-black/50 transition">
+                        ✕
+                    </button>
+                    
+                    <div class="p-8 flex items-center">
+                        <img :src="selectedPokemon.sprite" :alt="selectedPokemon.name" 
+                            class="w-40 h-40 pokemon-sprite drop-shadow-2xl">
+                        <div class="ml-6">
+                            <p class="text-white/70">#{{ String(selectedPokemon.id).padStart(3, '0') }}</p>
+                            <h2 class="text-4xl font-bold capitalize text-white">{{ selectedPokemon.name }}</h2>
+                            <div class="flex gap-2 mt-2">
+                                <span v-for="t in selectedPokemon.types" :key="t" :class="`type-${t} px-4 py-1 rounded-full text-sm font-medium text-white capitalize`">
+                                    {{ t }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Stats -->
+                <div class="p-8">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                        <div class="bg-surface rounded-xl p-4 text-center">
+                            <p class="text-gray-400 text-sm">Height</p>
+                            <p class="text-xl font-bold">{{ selectedPokemon.height / 10 }}m</p>
+                        </div>
+                        <div class="bg-surface rounded-xl p-4 text-center">
+                            <p class="text-gray-400 text-sm">Weight</p>
+                            <p class="text-xl font-bold">{{ selectedPokemon.weight / 10 }}kg</p>
+                        </div>
+                        <div class="bg-surface rounded-xl p-4 text-center">
+                            <p class="text-gray-400 text-sm">Base XP</p>
+                            <p class="text-xl font-bold">{{ selectedPokemon.base_experience }}</p>
+                        </div>
+                        <div class="bg-surface rounded-xl p-4 text-center">
+                            <p class="text-gray-400 text-sm">Order</p>
+                            <p class="text-xl font-bold">#{{ selectedPokemon.order }}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Stats Bars -->
+                    <h3 class="text-xl font-bold mb-4">Base Stats</h3>
+                    <div class="space-y-3">
+                        <div v-for="stat in selectedPokemon.stats" :key="stat.name">
+                            <div class="flex justify-between mb-1">
+                                <span class="text-gray-400 capitalize">{{ stat.name.replace('-', ' ') }}</span>
+                                <span class="font-bold">{{ stat.value }}</span>
+                            </div>
+                            <div class="stat-bar">
+                                <div class="stat-fill" :style="{ width: Math.min(stat.value, 100) + '%', background: getStatColor(stat.value) }"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Abilities -->
+                    <h3 class="text-xl font-bold mt-8 mb-4">Abilities</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <span v-for="ability in selectedPokemon.abilities" :key="ability" 
+                            class="bg-surface px-4 py-2 rounded-full capitalize">
+                            {{ ability.replace('-', ' ') }}
+                        </span>
+                    </div>
+                    
+                    <!-- Types Weaknesses/Strengths -->
+                    <h3 class="text-xl font-bold mt-8 mb-4">Type Defense</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-gray-400 mb-2">Weak against</p>
+                            <div class="flex flex-wrap gap-2">
+                                <span v-for="t in selectedPokemon.weaknesses" :key="t" :class="`type-${t} px-3 py-1 rounded-full text-xs font-medium text-white capitalize`">
+                                    {{ t }}
+                                </span>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-gray-400 mb-2">Resistant to</p>
+                            <div class="flex flex-wrap gap-2">
+                                <span v-for="t in selectedPokemon.strengths" :key="t" :class="`type-${t} px-3 py-1 rounded-full text-xs font-medium text-white capitalize`">
+                                    {{ t }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Favorites Modal -->
+        <div v-if="showFavorites" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-black/80" @click="showFavorites = false"></div>
+            <div class="relative bg-card rounded-3xl max-w-4xl w-full max-h-[80vh] overflow-auto p-8">
+                <button @click="showFavorites = false" class="absolute top-4 right-4 text-2xl">✕</button>
+                <h2 class="text-2xl font-bold mb-6">❤️ Your Favorites</h2>
+                
+                <div v-if="favorites.length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div v-for="pokemon in favoritePokemonData" :key="pokemon.id" @click="openModal(pokemon)"
+                        class="poke-card bg-surface rounded-xl p-4 cursor-pointer">
+                        <img :src="pokemon.sprite" :alt="pokemon.name" class="w-20 h-20 mx-auto pokemon-sprite mb-2">
+                        <p class="text-center capitalize font-medium">{{ pokemon.name }}</p>
+                    </div>
+                </div>
+                <div v-else class="text-center py-12 text-gray-400">
+                    No favorites yet! Click ❤️ on Pokemon to add them.
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <footer class="bg-surface mt-20 py-8">
+            <div class="max-w-7xl mx-auto px-4 text-center text-gray-400">
+                <p>Data from <a href="https://pokeapi.co/" target="_blank" class="text-poke-yellow hover:underline">PokéAPI</a></p>
+                <p class="mt-2">Built with ❤️</p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch } = Vue;
+        
+        createApp({
+            setup() {
+                const API = 'https://pokeapi.co/api/v2';
+                const TYPES = ['normal', 'fire', 'water', 'electric', 'grass', 'ice', 'fighting', 'poison', 'ground', 'flying', 'psychic', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy'];
+                
+                const pokemon = ref([]);
+                const allPokemon = ref([]);
+                const loading = ref(true);
+                const loadingMore = ref(false);
+                const search = ref('');
+                const filterType = ref(null);
+                const selectedPokemon = ref(null);
+                const showFavorites = ref(false);
+                const favorites = ref(JSON.parse(localStorage.getItem('pokedex-favorites') || '[]'));
+                const favoritePokemonData = ref([]);
+                const offset = ref(0);
+                const hasMore = ref(true);
+                const types = ref(TYPES);
+                
+                const filteredPokemon = computed(() => {
+                    let result = showFavorites.value ? favoritePokemonData.value : allPokemon.value;
+                    
+                    if (search.value) {
+                        result = result.filter(p => p.name.toLowerCase().includes(search.value.toLowerCase()));
+                    }
+                    
+                    if (filterType.value) {
+                        result = result.filter(p => p.types.includes(filterType.value));
+                    }
+                    
+                    return result;
+                });
+                
+                const fetchPokemon = async (id) => {
+                    const res = await fetch(`${API}/pokemon/${id}`);
+                    const data = await res.json();
+                    
+                    return {
+                        id: data.id,
+                        name: data.name,
+                        sprite: data.sprites.other['official-artwork'].front_default || data.sprites.front_default,
+                        sprites: data.sprites,
+                        types: data.types.map(t => t.type.name),
+                        height: data.height,
+                        weight: data.weight,
+                        base_experience: data.base_experience,
+                        order: data.order,
+                        abilities: data.abilities.map(a => a.ability.name),
+                        stats: data.stats.map(s => ({ name: s.stat.name, value: s.stat.name === 'hp' ? s.base_stat : Math.min(s.base_stat, 100) })),
+                        statsFull: data.stats.map(s => ({ name: s.stat.name, value: s.base_stat })),
+                        weaknesses: [],
+                        strengths: []
+                    };
+                };
+                
+                const fetchTypeData = async (pokemonData) => {
+                    const typeRes = await fetch(`${API}/type/${pokemonData.types[0]}`);
+                    const typeData = await typeRes.json();
+                    
+                    pokemonData.weaknesses = typeData.damage_relations.double_damage_from.map(t => t.name);
+                    pokemonData.strengths = typeData.damage_relations.half_damage_from.map(t => t.name);
+                    
+                    return pokemonData;
+                };
+                
+                const loadPokemon = async (count = 50, reset = false) => {
+                    if (reset) {
+                        loading.value = true;
+                        offset.value = 0;
+                    } else {
+                        loadingMore.value = true;
+                    }
+                    
+                    const promises = [];
+                    for (let i = offset.value + 1; i <= offset.value + count; i++) {
+                        promises.push(fetchPokemon(i));
+                    }
+                    
+                    const results = await Promise.all(promises);
+                    
+                    for (const p of results) {
+                        const withTypes = await fetchTypeData(p);
+                        pokemon.value.push(withTypes);
+                    }
+                    
+                    allPokemon.value = [...pokemon.value];
+                    offset.value += count;
+                    
+                    if (offset.value >= 151) hasMore.value = false;
+                    
+                    loading.value = false;
+                    loadingMore.value = false;
+                };
+                
+                const loadMore = () => {
+                    if (!loadingMore.value && hasMore.value) {
+                        loadPokemon(25);
+                    }
+                };
+                
+                const openModal = async (p) => {
+                    if (!p.weaknesses.length) {
+                        selectedPokemon.value = await fetchTypeData(p);
+                    } else {
+                        selectedPokemon.value = p;
+                    }
+                };
+                
+                const closeModal = () => {
+                    selectedPokemon.value = null;
+                };
+                
+                const toggleFavorite = (p) => {
+                    const idx = favorites.value.indexOf(p.id);
+                    if (idx > -1) {
+                        favorites.value.splice(idx, 1);
+                    } else {
+                        favorites.value.push(p.id);
+                    }
+                    localStorage.setItem('pokedex-favorites', JSON.stringify(favorites.value));
+                    loadFavorites();
+                };
+                
+                const isFavorite = (id) => favorites.value.includes(id);
+                
+                const loadFavorites = async () => {
+                    favoritePokemonData.value = [];
+                    for (const id of favorites.value) {
+                        const p = await fetchPokemon(id);
+                        const withTypes = await fetchTypeData(p);
+                        favoritePokemonData.value.push(withTypes);
+                    }
+                };
+                
+                const searchPokemon = () => {
+                    // Real-time search handled by computed
+                };
+                
+                const getStatColor = (value) => {
+                    if (value >= 90) return '#10b981';
+                    if (value >= 70) return '#22c55e';
+                    if (value >= 50) return '#eab308';
+                    if (value >= 30) return '#f97316';
+                    return '#ef4444';
+                };
+                
+                onMounted(async () => {
+                    await loadPokemon(50);
+                    await loadFavorites();
+                });
+                
+                watch(showFavorites, (val) => {
+                    if (val) loadFavorites();
+                });
+                
+                return {
+                    pokemon, allPokemon, filteredPokemon,
+                    loading, loadingMore, search, filterType,
+                    selectedPokemon, showFavorites, favorites,
+                    favoritePokemonData, types, hasMore,
+                    loadMore, openModal, closeModal,
+                    toggleFavorite, isFavorite, searchPokemon,
+                    getStatColor
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
